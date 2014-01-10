@@ -114,7 +114,7 @@ def wp2fields(xml):
 
     for item in items:
 
-        if item.find('status').string == "publish":
+        if item.find('status').string == "publish" or item.find('post_type').string == "attachment":
 
             try:
                 # Use HTMLParser due to issues with BeautifulSoup 3
@@ -139,9 +139,14 @@ def wp2fields(xml):
 
             tags = [tag.string for tag in item.findAll('category', {'domain' : 'post_tag'})]
 
-            kind = 'article'
-            if item.find('post_type').string == 'page':
+            if item.find('post_type').string == 'post':
+                kind = 'article'
+            elif item.find('post_type').string == 'page':
                 kind = 'page'
+            elif item.find('post_type').string == 'attachment':
+                kind = 'attachment'
+            else:
+                kind = item.find('post_type').string
 
             yield (title, content, filename, date, author, categories, tags,
                    kind, "wp-html")
@@ -463,11 +468,18 @@ def build_markdown_header(title, date, author, categories, tags, slug):
 
 def fields2pelican(fields, out_markup, output_path,
         dircat=False, strip_raw=False, disable_slugs=False,
-        dirpage=False, filename_template=None, filter_author=None):
+        dirpage=False, filename_template=None, filter_author=None,
+        wp_attach=False, wp_custpost=False):
     for (title, content, filename, date, author, categories, tags,
             kind, in_markup) in fields:
         if filter_author and filter_author != author:
             continue
+        if kind == 'attachment':
+            if not wp_attach:
+                continue
+            else:
+                #do logic here
+                pass
         slug = not disable_slugs and filename or None
         if (in_markup == "markdown") or (out_markup == "markdown") :
             ext = '.md'
@@ -494,6 +506,23 @@ def fields2pelican(fields, out_markup, output_path,
             if not os.path.isdir(pages_dir):
                 os.mkdir(pages_dir)
             out_filename = os.path.join(pages_dir, filename+ext)
+        # option to put wp custom post types in directories with post type
+        # names. Custom post types can also have categories so option to
+        # create subdirectories with category names
+        elif kind != 'article':
+            if wp_custpost:
+                typename = slugify(kind)
+            else:
+                typename = ''
+                kind = 'article'
+            if dircat and (len(categories) > 0):
+                catname = slugify(categories[0])
+            else:
+                catname = ''
+            out_filename = os.path.join(output_path, typename, 
+                catname, filename+ext)
+            if not os.path.isdir(os.path.join(output_path, typename, catname)):
+                os.makedirs(os.path.join(output_path, typename, catname))
         # option to put files in directories with categories names
         elif dircat and (len(categories) > 0):
             catname = slugify(categories[0])
@@ -584,6 +613,14 @@ def main():
     parser.add_argument('--strip-raw', action='store_true', dest='strip_raw',
         help="Strip raw HTML code that can't be converted to "
              "markup such as flash embeds or iframes (wordpress import only)")
+    parser.add_argument('--wp-custpost', action='store_true', 
+        dest='wp_custpost',
+        help='Put wordpress custom post types in directories. If used with '
+             '--dir-cat option directories will be created as '
+             '/post_type/category/')
+    parser.add_argument('--wp-attach', action='store_true', dest='wp_attach',
+        help='(wordpress import only) output a list of all wordpress '
+             'attachments that can then be downloaded using wget. ')
     parser.add_argument('--disable-slugs', action='store_true',
         dest='disable_slugs',
         help='Disable storing slugs from imported posts within output. '
@@ -638,4 +675,6 @@ def main():
                    dirpage=args.dirpage or False,
                    strip_raw=args.strip_raw or False,
                    disable_slugs=args.disable_slugs or False,
-                   filter_author=args.author)
+                   filter_author=args.author,
+                   wp_attach = args.wp_attach or False,
+                   wp_custpost = arg.wp_custpost or False)

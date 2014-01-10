@@ -54,6 +54,18 @@ class TestWordpressXmlImporter(unittest.TestCase):
             fname = list(silent_f2p(test_post, 'markdown', temp, dirpage=True))[0]
             self.assertTrue(fname.endswith('pages%sempty.md' % os.path.sep))
 
+    def test_recognise_wp_attachment_kind_and_content_is_url(self):
+        self.assertTrue(self.posts)
+        attachments_data = []
+        for title, content, fname, date, autor, catag, tags, kind, format in self.posts:
+            if kind == 'attachment':
+                attachments_data.append((title, fname, content))
+        self.assertEqual(1, len(attachments_data))
+        self.assertEqual(('Empty Post!', 'empty-post',
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Pelican_lakes_entrance02.jpg/240px-Pelican_lakes_entrance02.jpg'),
+            attachments_data[0])
+
+
     def test_can_toggle_raw_html_code_parsing(self):
         def r(f):
             with open(f) as infile:
