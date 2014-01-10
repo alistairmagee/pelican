@@ -5,7 +5,11 @@ import six
 from datetime import datetime
 from sys import platform
 
+<<<<<<< HEAD
 from pelican.support import unittest, get_settings
+=======
+from pelican.tests.support import unittest, get_settings
+>>>>>>> test_absolute_import
 
 from pelican.contents import Page, Article, URLWrapper
 from pelican.settings import DEFAULT_CONFIG
