@@ -97,7 +97,7 @@ def decode_wp_content(content, br=True):
     return content
 
 
-def wp2fields(xml):
+def wp2fields(xml, wp_attach=False, wp_custpost=False):
     """Opens a wordpress XML file, and yield Pelican fields"""
     try:
         from bs4 import BeautifulSoup
@@ -114,7 +114,8 @@ def wp2fields(xml):
 
     for item in items:
 
-        if item.find('status').string == "publish" or item.find('post_type').string == "attachment":
+        if (item.find('status').string == "publish" or 
+            (wp_attach and item.find('post_type').string == "attachment")):
 
             try:
                 # Use HTMLParser due to issues with BeautifulSoup 3
@@ -145,6 +146,7 @@ def wp2fields(xml):
                 kind = 'page'
             elif item.find('post_type').string == 'attachment':
                 kind = 'attachment'
+                content = item.find('attachment_url').string
             else:
                 kind = item.find('post_type').string
 
@@ -658,7 +660,8 @@ def main():
             exit(error)
 
     if input_type == 'wordpress':
-        fields = wp2fields(args.input)
+        fields = wp2fields(args.input, args.wp_attach or False, 
+            args.wp_custpost or False)
     elif input_type == 'dotclear':
         fields = dc2fields(args.input)
     elif input_type == 'posterous':
@@ -677,4 +680,4 @@ def main():
                    disable_slugs=args.disable_slugs or False,
                    filter_author=args.author,
                    wp_attach = args.wp_attach or False,
-                   wp_custpost = arg.wp_custpost or False)
+                   wp_custpost = args.wp_custpost or False)

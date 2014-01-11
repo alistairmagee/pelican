@@ -61,7 +61,7 @@ class TestWordpressXmlImporter(unittest.TestCase):
             if kind == 'attachment':
                 attachments_data.append((title, fname, content))
         self.assertEqual(1, len(attachments_data))
-        self.assertEqual(('Empty Post!', 'empty-post',
+        self.assertEqual(('Empty post', 'empty-post',
             'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Pelican_lakes_entrance02.jpg/240px-Pelican_lakes_entrance02.jpg'),
             attachments_data[0])
 
