@@ -141,6 +141,26 @@ class TestWordpressXmlImporter(unittest.TestCase):
             out_name = fnames[index]
             self.assertTrue(out_name.endswith(filename))
             index += 1
+
+    def test_wp_custpost_true_dirpage_false(self):
+        #pages should only be put in their own directory when dirpage = True
+        silent_f2p = mute(True)(fields2pelican)
+        test_posts = []
+        for post in self.custposts:
+            # check post kind
+            if post[7] == 'page':
+                test_posts.append(post)
+        with temporary_folder() as temp:
+            fnames = list(silent_f2p(test_posts, 'markdown', temp, 
+                wp_custpost=True, dirpage=False))
+        index = 0
+        for post in test_posts:
+            name = post[2]
+            name += '.md'
+            filename = os.path.join('pages', name)
+            out_name = fnames[index]
+            self.assertFalse(out_name.endswith(filename))
+        
  
     def test_can_toggle_raw_html_code_parsing(self):
         def r(f):
