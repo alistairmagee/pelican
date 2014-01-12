@@ -4,7 +4,7 @@ from __future__ import unicode_literals, print_function
 import os
 import re
 
-from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header
+from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header, attachments2file
 from pelican.tests.support import (unittest, temporary_folder, mute,
                                    skipIfNoExecutable)
 
@@ -22,13 +22,13 @@ try:
 except ImportError:
     BeautifulSoup = False  # NOQA
 
-
 @skipIfNoExecutable(['pandoc', '--version'])
 @unittest.skipUnless(BeautifulSoup, 'Needs BeautifulSoup module')
 class TestWordpressXmlImporter(unittest.TestCase):
 
     def setUp(self):
         self.posts = list(wp2fields(WORDPRESS_XML_SAMPLE))
+        self.custposts = list(wp2fields(WORDPRESS_XML_SAMPLE, True))
 
     def test_ignore_empty_posts(self):
         self.assertTrue(self.posts)
@@ -54,18 +54,50 @@ class TestWordpressXmlImporter(unittest.TestCase):
             fname = list(silent_f2p(test_post, 'markdown', temp, dirpage=True))[0]
             self.assertTrue(fname.endswith('pages%sempty.md' % os.path.sep))
 
-    def test_recognise_wp_attachment_kind_and_content_is_url(self):
+    def test_unless_custom_post_all_items_should_be_pages_or_posts(self):
         self.assertTrue(self.posts)
-        attachments_data = []
-        for title, content, fname, date, autor, catag, tags, kind, format in self.posts:
-            if kind == 'attachment':
-                attachments_data.append((title, fname, content))
-        self.assertEqual(1, len(attachments_data))
-        self.assertEqual(('Empty post', 'empty-post',
-            'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Pelican_lakes_entrance02.jpg/240px-Pelican_lakes_entrance02.jpg'),
-            attachments_data[0])
-
-
+        pages_data = []
+        for title, content, fname, date, author, categ, tags, kind, format in self.posts:
+            if kind == 'page' or kind == 'article':
+                pass
+            else:
+                pages_data.append((title, fname))
+        self.assertEqual(0, len(pages_data))
+    
+    def test_recognise_custom_post_type(self):
+        self.assertTrue(self.custposts)
+        cust_data = []
+        for title, content, fname, date, author, categ, tags, kind, format in self.custposts:
+            if kind == 'article' or kind == 'page':
+                pass
+            else:
+                cust_data.append((title, kind))
+        self.assertEqual(3, len(cust_data))
+        self.assertEqual(('A custom post in category 4', 'custom1'), cust_data[0])
+        self.assertEqual(('A custom post in category 5', 'custom1'), cust_data[1])
+        self.assertEqual(('A 2nd custom post type also in category 5', 'custom2'), cust_data[2])
+     
+    def test_custom_posts_put_in_own_dir(self):
+        silent_f2p = mute(True)(fields2pelican)
+        test_posts = []
+        for post in self.custposts:
+            # check post kind
+            if post[7] == 'article' or post[7] == 'page':
+                pass
+            else:
+                test_posts.append(post)
+        with temporary_folder() as temp:
+            for post in test_posts:
+                count = 1
+                for item in post:
+                    print('-----------{}-----------'.format(count))
+                    print(item)
+                    count +=1 
+                kind = post[7]
+                title = post[0]
+                fname = list(silent_f2p(post, 'markdown', temp, wp_custpost = True))[0]
+                print(fname)
+    
     def test_can_toggle_raw_html_code_parsing(self):
         def r(f):
             with open(f) as infile:
@@ -149,3 +181,27 @@ class TestBuildHeader(unittest.TestCase):
                 'これは広い幅の文字だけで構成されたタイトルです\n' +
                 '##############################################\n\n')
 
+        
+#class TestWordpressXMLAttachements(unittest.TestCase):        
+#    
+#    def setUp(self):
+#        pass
+#
+#    def test_recognise_wp_attachment_kind(self):
+#        self.assertTrue(self.attached)
+#        posts = list(self.attached)
+#        self.assertTrue(posts)
+#        attachments_data = []
+#        for (title, content, fname, date, autor, 
+#            catag, tags, kind, format) in posts:
+#            if kind == 'attachment':
+#                attachments_data.append(title)
+#        self.assertEqual(2, len(attachments_data))
+#        self.assertEqual(('Empty post'), attachments_data[0])
+#        self.assertEqual(('Attachment with a parent'), attachments_data[1])
+#
+#    def test_correct_behaviour_when_wp_attach_false(self):
+#        self.assertTrue(self.original)
+#        self.assertFalse(self.original.contains(attachments))
+#        self.assertFalse(self.original.postids)
+#

@@ -96,26 +96,33 @@ def decode_wp_content(content, br=True):
 
     return content
 
-
-def wp2fields(xml, wp_attach=False, wp_custpost=False):
-    """Opens a wordpress XML file, and yield Pelican fields"""
+def get_items(xml):
+    """Opens a wordpress xml file and returns a list of items"""
     try:
         from bs4 import BeautifulSoup
     except ImportError:
         error = ('Missing dependency '
                  '"BeautifulSoup4" and "lxml" required to import Wordpress XML files.')
         sys.exit(error)
-
-
     with open(xml, encoding='utf-8') as infile:
         xmlfile = infile.read()
     soup = BeautifulSoup(xmlfile, "xml")
     items = soup.rss.channel.findAll('item')
+    return items
 
+def get_filename(filename, post_id):
+    if filename is not None:
+        return filename
+    else:
+        return post_id
+
+def wp2fields(xml, wp_custpost=False):
+    """Opens a wordpress XML file, and yield Pelican fields"""
+    
+    items = get_items(xml)
     for item in items:
 
-        if (item.find('status').string == "publish" or 
-            (wp_attach and item.find('post_type').string == "attachment")):
+        if item.find('status').string == "publish":
 
             try:
                 # Use HTMLParser due to issues with BeautifulSoup 3
@@ -124,32 +131,36 @@ def wp2fields(xml, wp_attach=False, wp_custpost=False):
                 title = 'No title [%s]' % item.find('post_name').string
                 logger.warn('Post "%s" is lacking a proper title' % title)
 
-            content = item.find('encoded').string
             filename = item.find('post_name').string
-
-            if filename is None:
-                filename = item.find('post_id').string
-
+            post_id = item.find('post_id').string
+            filename = get_filename(filename, post_id)
+            
+            content = item.find('encoded').string
             raw_date = item.find('post_date').string
             date_object = time.strptime(raw_date, "%Y-%m-%d %H:%M:%S")
             date = time.strftime("%Y-%m-%d %H:%M", date_object)
             author = item.find('creator').string
- 
+
             categories = [cat.string for cat in item.findAll('category', {'domain' : 'category'})]
             # caturl = [cat['nicename'] for cat in item.find(domain='category')]
 
             tags = [tag.string for tag in item.findAll('category', {'domain' : 'post_tag'})]
 
-            if item.find('post_type').string == 'post':
-                kind = 'article'
-            elif item.find('post_type').string == 'page':
+            kind = 'article'
+            post_type = item.find('post_type').string
+            if post_type == 'page':
                 kind = 'page'
-            elif item.find('post_type').string == 'attachment':
-                kind = 'attachment'
-                content = item.find('attachment_url').string
-            else:
-                kind = item.find('post_type').string
-
+            elif wp_custpost:
+                if post_type == 'post':
+                    pass
+                # Old behaviour was to name everything not a page as an article.
+                # Theoretically all attachments have status == inherit so
+                # no attachments should be here. But this statement is to 
+                # maintain existing behaviour in case that doesn't hold true.
+                elif post_type == 'attachment':
+                    pass
+                else:
+                    kind = post_type
             yield (title, content, filename, date, author, categories, tags,
                    kind, "wp-html")
 
@@ -468,6 +479,60 @@ def build_markdown_header(title, date, author, categories, tags, slug):
     header += '\n'
     return header
 
+def get_ext(out_markup, in_markup='html'):
+    if in_markup == 'markdown' or out_markup == 'markdown':
+        ext = '.md'
+    else:
+        ext = '.rst'
+    return ext
+    
+def get_out_filename(output_path, filename, ext, kind, 
+        dirpage, dircat, wp_custpost):
+    filename = os.path.basename(filename)
+
+    # Enforce filename restrictions for various filesystems at once; see
+    # http://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
+    # we do not need to filter words because an extension will be appended
+    filename = re.sub(r'[<>:"/\\|?*^% ]', '-', filename) # invalid chars
+    filename = filename.lstrip('.') # should not start with a dot
+    if not filename:
+        filename = '_'
+    filename = filename[:249] # allow for 5 extra characters
+
+    # option to put page posts in pages/ subdirectory
+    if dirpage and kind == 'page':
+        pages_dir = os.path.join(output_path, 'pages')
+        if not os.path.isdir(pages_dir):
+            os.mkdir(pages_dir)
+        out_filename = os.path.join(pages_dir, filename+ext)
+    # option to put wp custom post types in directories with post type
+    # names. Custom post types can also have categories so option to
+    # create subdirectories with category names
+    elif kind != 'article':
+        if wp_custpost:
+            typename = slugify(kind)
+        else:
+            typename = ''
+            kind = 'article'
+        if dircat and (len(categories) > 0):
+            catname = slugify(categories[0])
+        else:
+            catname = ''
+        out_filename = os.path.join(output_path, typename, 
+            catname, filename+ext)
+        if not os.path.isdir(os.path.join(output_path, typename, catname)):
+            os.makedirs(os.path.join(output_path, typename, catname))
+    # option to put files in directories with categories names
+    elif dircat and (len(categories) > 0):
+        catname = slugify(categories[0])
+        out_filename = os.path.join(output_path, catname, filename+ext)
+        if not os.path.isdir(os.path.join(output_path, catname)):
+            os.mkdir(os.path.join(output_path, catname))
+    else:
+        out_filename = os.path.join(output_path, filename+ext)
+    return out_filename
+
+
 def fields2pelican(fields, out_markup, output_path,
         dircat=False, strip_raw=False, disable_slugs=False,
         dirpage=False, filename_template=None, filter_author=None,
@@ -476,64 +541,18 @@ def fields2pelican(fields, out_markup, output_path,
             kind, in_markup) in fields:
         if filter_author and filter_author != author:
             continue
-        if kind == 'attachment':
-            if not wp_attach:
-                continue
-            else:
-                #do logic here
-                pass
         slug = not disable_slugs and filename or None
-        if (in_markup == "markdown") or (out_markup == "markdown") :
-            ext = '.md'
+        print(slug)
+
+        ext = get_ext(out_markup, in_markup)
+        if ext == '.md':
             header = build_markdown_header(title, date, author, categories, tags, slug)
         else:
             out_markup = "rst"
-            ext = '.rst'
             header = build_header(title, date, author, categories, tags, slug)
 
-        filename = os.path.basename(filename)
-
-        # Enforce filename restrictions for various filesystems at once; see
-        # http://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
-        # we do not need to filter words because an extension will be appended
-        filename = re.sub(r'[<>:"/\\|?*^% ]', '-', filename) # invalid chars
-        filename = filename.lstrip('.') # should not start with a dot
-        if not filename:
-            filename = '_'
-        filename = filename[:249] # allow for 5 extra characters
-
-        # option to put page posts in pages/ subdirectory
-        if dirpage and kind == 'page':
-            pages_dir = os.path.join(output_path, 'pages')
-            if not os.path.isdir(pages_dir):
-                os.mkdir(pages_dir)
-            out_filename = os.path.join(pages_dir, filename+ext)
-        # option to put wp custom post types in directories with post type
-        # names. Custom post types can also have categories so option to
-        # create subdirectories with category names
-        elif kind != 'article':
-            if wp_custpost:
-                typename = slugify(kind)
-            else:
-                typename = ''
-                kind = 'article'
-            if dircat and (len(categories) > 0):
-                catname = slugify(categories[0])
-            else:
-                catname = ''
-            out_filename = os.path.join(output_path, typename, 
-                catname, filename+ext)
-            if not os.path.isdir(os.path.join(output_path, typename, catname)):
-                os.makedirs(os.path.join(output_path, typename, catname))
-        # option to put files in directories with categories names
-        elif dircat and (len(categories) > 0):
-            catname = slugify(categories[0])
-            out_filename = os.path.join(output_path, catname, filename+ext)
-            if not os.path.isdir(os.path.join(output_path, catname)):
-                os.mkdir(os.path.join(output_path, catname))
-        else:
-            out_filename = os.path.join(output_path, filename+ext)
-
+        out_filename = get_out_filename(output_path, filename, ext,
+                kind, dirpage, dircat, wp_custpost)
         print(out_filename)
 
         if in_markup in ("html", "wp-html"):
@@ -581,6 +600,46 @@ def fields2pelican(fields, out_markup, output_path,
 
         with open(out_filename, 'w', encoding='utf-8') as fs:
             fs.write(header + content)
+            
+def attachments2file(xml, output_path, out_markup, 
+        dirpage, dircat, wp_custpost):
+    """Outputs a file of attachment addressess to download from legacy
+    wordpress installs, along with the pelican generated filename the
+    attachment corresponds to
+    """
+    items = get_items(xml)
+    postids = {}
+    attachments = []
+    
+    for item in items:
+        kind = item.find('post_type').string
+        filename = item.find('post_name').string
+        post_id = item.find('post_id').string
+        
+        if kind == 'attachment':
+            attachments.append((item.find('post_parent').string, 
+                item.find('attachment_url').string))
+        else:        
+            filename = get_filename(filename, post_id)
+            ext = get_ext(out_markup)
+            out_filename = get_out_filename(output_path, filename, ext,
+                    kind, dirpage, dircat, wp_custpost)
+            postids[post_id] = out_filename
+
+
+    filename = os.path.join(output_path, 'attachments.txt')
+    with open(filename, 'w', encoding='utf-8') as writer:
+        for attachment in attachments:
+            parent = attachment[0]
+            url = attachment[1]
+            try:
+                postname = postids[parent]
+            except KeyError:
+                print("attachment at address {} has no parent post, ignoring", 
+                format (url))
+                continue
+        writer.append(postname, url)
+ 
 
 
 def main():
@@ -658,10 +717,13 @@ def main():
         except OSError:
             error = "Unable to create the output folder: " + args.output
             exit(error)
-
+    
+    if args.wp_attach and input_type != 'wordpress':
+        error = "You must be importing a wordpress xml to use the --wp-attach option"
+        exit(error)
+        
     if input_type == 'wordpress':
-        fields = wp2fields(args.input, args.wp_attach or False, 
-            args.wp_custpost or False)
+        fields = wp2fields(args.input, args.wp_custpost or False)
     elif input_type == 'dotclear':
         fields = dc2fields(args.input)
     elif input_type == 'posterous':
@@ -670,6 +732,11 @@ def main():
         fields = tumblr2fields(args.input, args.blogname)
     elif input_type == 'feed':
         fields = feed2fields(args.input)
+
+    # do this afer wp2fields to catch Beatifulsoup import errors
+    if args.wp_attach:
+        attachments2file(args.input, args.output)
+
 
     init() # init logging
 
