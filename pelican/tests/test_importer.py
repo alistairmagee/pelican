@@ -8,6 +8,8 @@ from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_co
 from pelican.tests.support import (unittest, temporary_folder, mute,
                                    skipIfNoExecutable)
 
+from pelican.utils import slugify
+
 CUR_DIR = os.path.dirname(__file__)
 WORDPRESS_XML_SAMPLE = os.path.join(CUR_DIR, 'content', 'wordpressexport.xml')
 WORDPRESS_ENCODED_CONTENT_SAMPLE = os.path.join(CUR_DIR,
@@ -54,6 +56,25 @@ class TestWordpressXmlImporter(unittest.TestCase):
             fname = list(silent_f2p(test_post, 'markdown', temp, dirpage=True))[0]
             self.assertTrue(fname.endswith('pages%sempty.md' % os.path.sep))
 
+    def test_dircat(self):
+        silent_f2p = mute(True)(fields2pelican)
+        test_posts = []
+        for post in self.posts:
+            # check post kind
+            if len(post[5]) > 0: # Has a category
+                test_posts.append(post)
+        with temporary_folder() as temp:
+            fnames = list(silent_f2p(test_posts, 'markdown', temp, dircat=True))
+        index = 0
+        for post in test_posts:
+            name = post[2]
+            category = slugify(post[5][0])
+            name += '.md'
+            filename = os.path.join(category, name)
+            out_name = fnames[index]
+            self.assertTrue(out_name.endswith(filename))
+            index += 1
+    
     def test_unless_custom_post_all_items_should_be_pages_or_posts(self):
         self.assertTrue(self.posts)
         pages_data = []
@@ -87,17 +108,40 @@ class TestWordpressXmlImporter(unittest.TestCase):
             else:
                 test_posts.append(post)
         with temporary_folder() as temp:
-            for post in test_posts:
-                count = 1
-                for item in post:
-                    print('-----------{}-----------'.format(count))
-                    print(item)
-                    count +=1 
-                kind = post[7]
-                title = post[0]
-                fname = list(silent_f2p(post, 'markdown', temp, wp_custpost = True))[0]
-                print(fname)
-    
+            fnames = list(silent_f2p(test_posts, 'markdown', temp, wp_custpost = True))
+        index = 0
+        for post in test_posts:
+            name = post[2]
+            kind = post[7]
+            name += '.md'
+            filename = os.path.join(kind, name)
+            out_name = fnames[index]
+            self.assertTrue(out_name.endswith(filename))
+            index += 1
+
+    def test_custom_posts_put_in_own_dir_and_catagory_sub_dir(self):
+        silent_f2p = mute(True)(fields2pelican)
+        test_posts = []
+        for post in self.custposts:
+            # check post kind
+            if post[7] == 'article' or post[7] == 'page':
+                pass
+            else:
+                test_posts.append(post)
+        with temporary_folder() as temp:
+            fnames = list(silent_f2p(test_posts, 'markdown', temp, 
+                wp_custpost=True, dircat=True))
+        index = 0
+        for post in test_posts:
+            name = post[2]
+            kind = post[7]
+            category = slugify(post[5][0])
+            name += '.md'
+            filename = os.path.join(kind, category, name)
+            out_name = fnames[index]
+            self.assertTrue(out_name.endswith(filename))
+            index += 1
+ 
     def test_can_toggle_raw_html_code_parsing(self):
         def r(f):
             with open(f) as infile:

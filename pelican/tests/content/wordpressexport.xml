@@ -730,7 +730,7 @@ proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]></con
         <wp:post_type>custom1</wp:post_type>
         <wp:post_password></wp:post_password>
         <wp:is_sticky>0</wp:is_sticky>
-        <category domain="category" nicename="category-4"><![CDATA[Category 2]]></category>
+        <category domain="category" nicename="category-4"><![CDATA[Category 4]]></category>
         <wp:postmeta>
             <wp:meta_key>_edit_last</wp:meta_key>
             <wp:meta_value><![CDATA[3]]></wp:meta_value>
@@ -784,7 +784,7 @@ proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]></con
         <wp:post_type>custom1</wp:post_type>
         <wp:post_password></wp:post_password>
         <wp:is_sticky>0</wp:is_sticky>
-        <category domain="category" nicename="category-5"><![CDATA[Category 2]]></category>
+        <category domain="category" nicename="category-5"><![CDATA[Category 5]]></category>
         <wp:postmeta>
             <wp:meta_key>_edit_last</wp:meta_key>
             <wp:meta_value><![CDATA[3]]></wp:meta_value>
@@ -838,7 +838,7 @@ proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]></con
         <wp:post_type>custom2</wp:post_type>
         <wp:post_password></wp:post_password>
         <wp:is_sticky>0</wp:is_sticky>
-        <category domain="category" nicename="category-5"><![CDATA[Category 2]]></category>
+        <category domain="category" nicename="category-5"><![CDATA[Category 5]]></category>
         <wp:postmeta>
             <wp:meta_key>_edit_last</wp:meta_key>
             <wp:meta_value><![CDATA[3]]></wp:meta_value>

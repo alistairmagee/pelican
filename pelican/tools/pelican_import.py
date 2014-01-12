@@ -487,7 +487,7 @@ def get_ext(out_markup, in_markup='html'):
     return ext
     
 def get_out_filename(output_path, filename, ext, kind, 
-        dirpage, dircat, wp_custpost):
+        dirpage, dircat, categories, wp_custpost):
     filename = os.path.basename(filename)
 
     # Enforce filename restrictions for various filesystems at once; see
@@ -542,7 +542,6 @@ def fields2pelican(fields, out_markup, output_path,
         if filter_author and filter_author != author:
             continue
         slug = not disable_slugs and filename or None
-        print(slug)
 
         ext = get_ext(out_markup, in_markup)
         if ext == '.md':
@@ -552,7 +551,7 @@ def fields2pelican(fields, out_markup, output_path,
             header = build_header(title, date, author, categories, tags, slug)
 
         out_filename = get_out_filename(output_path, filename, ext,
-                kind, dirpage, dircat, wp_custpost)
+                kind, dirpage, dircat, categories, wp_custpost)
         print(out_filename)
 
         if in_markup in ("html", "wp-html"):
