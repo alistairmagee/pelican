@@ -499,12 +499,15 @@ def get_out_filename(output_path, filename, ext, kind,
         filename = '_'
     filename = filename[:249] # allow for 5 extra characters
 
+    out_filename = os.path.join(output_path, filename+ext)
     # option to put page posts in pages/ subdirectory
     if dirpage and kind == 'page':
         pages_dir = os.path.join(output_path, 'pages')
         if not os.path.isdir(pages_dir):
             os.mkdir(pages_dir)
         out_filename = os.path.join(pages_dir, filename+ext)
+    elif not dirpage and kind == 'page':
+        pass 
     # option to put wp custom post types in directories with post type
     # names. Custom post types can also have categories so option to
     # create subdirectories with category names
@@ -528,8 +531,7 @@ def get_out_filename(output_path, filename, ext, kind,
         out_filename = os.path.join(output_path, catname, filename+ext)
         if not os.path.isdir(os.path.join(output_path, catname)):
             os.mkdir(os.path.join(output_path, catname))
-    else:
-        out_filename = os.path.join(output_path, filename+ext)
+
     return out_filename
 
 
