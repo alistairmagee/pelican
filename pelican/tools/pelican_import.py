@@ -740,8 +740,7 @@ def main():
              'Requires an internet connection, the pelican-gallery plugin ' 
              'and python-wget ("pip install wget")')
     parser.add_argument('--wp-attach-dest', dest='download_folder', 
-            default='_attachments', help='Folder to download attachments to, '
-            'defaults to _attachments')
+            default='_attachments', help='Folder to download attachments to')
     parser.add_argument('--disable-slugs', action='store_true',
         dest='disable_slugs',
         help='Disable storing slugs from imported posts within output. '
