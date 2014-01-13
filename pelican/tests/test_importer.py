@@ -4,7 +4,7 @@ from __future__ import unicode_literals, print_function
 import os
 import re
 
-from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header, attachments2file
+from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header, build_markdown_header, get_attachments, create_gallery
 from pelican.tests.support import (unittest, temporary_folder, mute,
                                    skipIfNoExecutable)
 
@@ -245,27 +245,47 @@ class TestBuildHeader(unittest.TestCase):
                 'これは広い幅の文字だけで構成されたタイトルです\n' +
                 '##############################################\n\n')
 
+    def test_gallery_added_to_header(self):
+        header = build_header('test', None, None, None, None, 
+                None, 'output/test')
+        self.assertEqual(header, 'test\n####\n' + ':gallery: output/test\n\n')
+
+    def test_gallery_added_to_markdown_header(self):
+        header = build_markdown_header('test', None, None, None, None, None,
+            'output/test')
+        self.assertEqual(header, 'Title: test\n' + 'Gallery: output/test\n\n')
+
         
-#class TestWordpressXMLAttachements(unittest.TestCase):        
-#    
-#    def setUp(self):
-#        pass
-#
-#    def test_recognise_wp_attachment_kind(self):
-#        self.assertTrue(self.attached)
-#        posts = list(self.attached)
-#        self.assertTrue(posts)
-#        attachments_data = []
-#        for (title, content, fname, date, autor, 
-#            catag, tags, kind, format) in posts:
-#            if kind == 'attachment':
-#                attachments_data.append(title)
-#        self.assertEqual(2, len(attachments_data))
-#        self.assertEqual(('Empty post'), attachments_data[0])
-#        self.assertEqual(('Attachment with a parent'), attachments_data[1])
-#
-#    def test_correct_behaviour_when_wp_attach_false(self):
-#        self.assertTrue(self.original)
-#        self.assertFalse(self.original.contains(attachments))
-#        self.assertFalse(self.original.postids)
+class TestWordpressXMLAttachements(unittest.TestCase):        
+    def setUp(self):
+        self.attachments = get_attachments(WORDPRESS_XML_SAMPLE)
+    
+    def test_recognise_attachments(self):
+        self.assertTrue(self.attachments)
+        self.assertTrue(len(self.attachments.keys()) == 3)
+
+    def test_attachments_associated_with_correct_post(self):
+        self.assertTrue(self.attachments)
+        for post in self.attachments.keys():
+            if post is None:
+                self.assertTrue(self.attachments[post][0] == 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Pelican_lakes_entrance02.jpg/240px-Pelican_lakes_entrance02.jpg')
+            elif post == 'with-excerpt':
+                self.assertTrue(self.attachments[post][0] == 'http://thisurlisinvalid.notarealdomain/not_an_image.jpg')
+                self.assertTrue(self.attachments[post][1] == 'http://en.wikipedia.org/wiki/File:Pelikan_Walvis_Bay.jpg')
+            elif post == 'with-tags':
+                self.assertTrue(self.attachments[post][0] == 'http://thisurlisinvalid.notarealdomain')
+            else:
+                self.fail('all attachments should match to a filename or None, {}'.format(post))
+
+
+#    def test_gallery_created_and_valid_attachments_download(self):
+#        self.assertTrue(self.attachments)
+#        urls = self.attachments['with-excerpt']
+#        valid_file = 'Pelikan_Walvis_Bay.jpg'
+#        invalid_file = 'not_an_image.jpg'
+#        with temporary_folder() as temp:
+#            gallery = create_gallery(temp, 'with-tags', urls)
+#            self.assertTrue(os.path.isdir(gallery))
+#            self.assertTrue(os.path.isfile(os.path.join(gallery, valid_file)))
+#            self.assertFalse(os.path.isfile(os.path.join(gallery, invalid_file)))
 #

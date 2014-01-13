@@ -428,7 +428,6 @@ def tumblr2fields(api_key, blogname):
         offset += len(posts)
         posts = get_tumblr_posts(api_key, blogname, offset)
 
-
 def feed2fields(file):
     """Read a feed and yield pelican fields"""
     import feedparser
@@ -444,8 +443,7 @@ def feed2fields(file):
         yield (entry.title, entry.description, slug, date, author, [], tags,
                kind, "html")
 
-
-def build_header(title, date, author, categories, tags, slug):
+def build_header(title, date, author, categories, tags, slug, gallery=None):
     from docutils.utils import column_width
 
     """Build a header from a list of fields"""
@@ -460,10 +458,12 @@ def build_header(title, date, author, categories, tags, slug):
         header += ':tags: %s\n' % ', '.join(tags)
     if slug:
         header += ':slug: %s\n' % slug
+    if gallery:
+        header += ':gallery: %s\n' % gallery
     header += '\n'
     return header
 
-def build_markdown_header(title, date, author, categories, tags, slug):
+def build_markdown_header(title, date, author, categories, tags, slug, gallery=None):
     """Build a header from a list of fields"""
     header = 'Title: %s\n' % title
     if date:
@@ -476,6 +476,8 @@ def build_markdown_header(title, date, author, categories, tags, slug):
         header += 'Tags: %s\n' % ', '.join(tags)
     if slug:
         header += 'Slug: %s\n' % slug
+    if gallery:
+        header += 'Gallery: %s\n' % gallery
     header += '\n'
     return header
 
@@ -534,23 +536,109 @@ def get_out_filename(output_path, filename, ext, kind,
 
     return out_filename
 
+def test_wp_attach(wp_attach, input_type, output_path, download_folder):
+    if wp_attach and input_type != 'wordpress':
+        error = "You must be importing a wordpress xml to use the --wp-attach option"
+        exit(error)
+    elif wp_attach:
+        try:
+            import wget
+        except ImportError:
+            error = ('Missing dependency "python-wget" required to '
+                    'download wordpress attachments')
+            exit(error)
+        try:
+            download_folder = os.mkdir(os.path.join(
+                output_path, download_folder))
+            return download_folder
+        except OSError:
+            error = "Couldn't created download folder for wp attachments"
+            exit(error)
+
+def get_attachments(xml):
+    """returns a dictionary of posts that have attachments with a list 
+    of the attachment_urls
+    """
+    items = get_items(xml)
+    names = {}
+    attachments = []
+    
+    for item in items:
+        kind = item.find('post_type').string
+        filename = item.find('post_name').string
+        post_id = item.find('post_id').string
+        
+        if kind == 'attachment':
+            attachments.append((item.find('post_parent').string, 
+                item.find('attachment_url').string))
+        else:
+            filename = get_filename(filename, post_id)
+            names[post_id] = filename
+    attachedposts = {}
+    for parent, url in attachments:
+        try:
+            parent_name = names[parent]
+        except KeyError:
+            #attachment's parent is not a valid post
+            parent_name = None
+        
+        try:
+            attachedposts[parent_name].append(url)
+        except KeyError:
+            attachedposts[parent_name] = []
+            attachedposts[parent_name].append(url)
+    return attachedposts
+
+def create_gallery(download_folder, filename, urls):
+    original_directory = os.path.abspath(os.curdir)
+    gallery = os.path.join(download_folder, filename)
+    print("creating {}".format(gallery))
+    os.mkdir(gallery)
+    os.chdir(gallery)
+    valid_downloads = 0
+    for url in urls:
+        try:
+            wget.download(url)
+            valid_downloads += 1
+        except URLError:
+            error = "Couldn't download file at {}, skipping".format(url)
+    os.chdir(original_directory)
+    
+    if valid_downloads > 0:
+        return gallery
+    else:
+        "No files could be downloaded, deleting gallery"
+        return None
+
 
 def fields2pelican(fields, out_markup, output_path,
         dircat=False, strip_raw=False, disable_slugs=False,
         dirpage=False, filename_template=None, filter_author=None,
-        wp_attach=False, wp_custpost=False):
+        wp_custpost=False, wp_attach=False, attachments=None, 
+        download_folder=None):
     for (title, content, filename, date, author, categories, tags,
             kind, in_markup) in fields:
         if filter_author and filter_author != author:
             continue
         slug = not disable_slugs and filename or None
 
+        if wp_attach and attachments:
+            try:
+                urls = attachments[filename]
+                gallery = create_gallery(download_folder, filename, urls)
+            except KeyError:
+                gallery = None
+        else: 
+            gallery = None
+
         ext = get_ext(out_markup, in_markup)
         if ext == '.md':
-            header = build_markdown_header(title, date, author, categories, tags, slug)
+            header = build_markdown_header(title, date, author, categories, 
+                    tags, slug, gallery)
         else:
             out_markup = "rst"
-            header = build_header(title, date, author, categories, tags, slug)
+            header = build_header(title, date, author, categories, 
+                    tags, slug, gallery)
 
         out_filename = get_out_filename(output_path, filename, ext,
                 kind, dirpage, dircat, categories, wp_custpost)
@@ -601,48 +689,11 @@ def fields2pelican(fields, out_markup, output_path,
 
         with open(out_filename, 'w', encoding='utf-8') as fs:
             fs.write(header + content)
+    if wp_attach and attachments and None in attachments:
+        print("downloading attachments that don't have a post")
+        urls = attachments[None]
+        orphan_gallery = create_gallery(download_path, '_orphan_files', urls)
             
-def attachments2file(xml, output_path, out_markup, 
-        dirpage, dircat, wp_custpost):
-    """Outputs a file of attachment addressess to download from legacy
-    wordpress installs, along with the pelican generated filename the
-    attachment corresponds to
-    """
-    items = get_items(xml)
-    postids = {}
-    attachments = []
-    
-    for item in items:
-        kind = item.find('post_type').string
-        filename = item.find('post_name').string
-        post_id = item.find('post_id').string
-        
-        if kind == 'attachment':
-            attachments.append((item.find('post_parent').string, 
-                item.find('attachment_url').string))
-        else:        
-            filename = get_filename(filename, post_id)
-            ext = get_ext(out_markup)
-            out_filename = get_out_filename(output_path, filename, ext,
-                    kind, dirpage, dircat, wp_custpost)
-            postids[post_id] = out_filename
-
-
-    filename = os.path.join(output_path, 'attachments.txt')
-    with open(filename, 'w', encoding='utf-8') as writer:
-        for attachment in attachments:
-            parent = attachment[0]
-            url = attachment[1]
-            try:
-                postname = postids[parent]
-            except KeyError:
-                print("attachment at address {} has no parent post, ignoring", 
-                format (url))
-                continue
-        writer.append(postname, url)
- 
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Transform feed, WordPress, Tumblr, Dotclear, or Posterous "
@@ -679,10 +730,18 @@ def main():
         dest='wp_custpost',
         help='Put wordpress custom post types in directories. If used with '
              '--dir-cat option directories will be created as '
-             '/post_type/category/')
+             '/post_type/category/ (wordpress import only)')
     parser.add_argument('--wp-attach', action='store_true', dest='wp_attach',
-        help='(wordpress import only) output a list of all wordpress '
-             'attachments that can then be downloaded using wget. ')
+        help='(wordpress import only) Download files uploaded to wordpress as '
+             'attachments into a gallery located at '
+             'output_path/_wp_uploads/postname . also generates a text file '
+             'redirects.txt in the _wp_uploads directory with the orignal url '
+             'and the new location. '
+             'Requires an internet connection, the pelican-gallery plugin ' 
+             'and python-wget ("pip install wget")')
+    parser.add_argument('--wp-attach-dest', dest='download_folder', 
+            default='_attachments', help='Folder to download attachments to, '
+            'defaults to _attachments')
     parser.add_argument('--disable-slugs', action='store_true',
         dest='disable_slugs',
         help='Disable storing slugs from imported posts within output. '
@@ -719,10 +778,10 @@ def main():
             error = "Unable to create the output folder: " + args.output
             exit(error)
     
-    if args.wp_attach and input_type != 'wordpress':
-        error = "You must be importing a wordpress xml to use the --wp-attach option"
-        exit(error)
-        
+    #test wp-attach before starting to process xml
+    download_folder = test_wp_attach(args.wp_attach, input_type, 
+            args.download_folder)
+          
     if input_type == 'wordpress':
         fields = wp2fields(args.input, args.wp_custpost or False)
     elif input_type == 'dotclear':
@@ -734,9 +793,8 @@ def main():
     elif input_type == 'feed':
         fields = feed2fields(args.input)
 
-    # do this afer wp2fields to catch Beatifulsoup import errors
     if args.wp_attach:
-        attachments2file(args.input, args.output)
+        attachments = get_attachments()
 
 
     init() # init logging
@@ -747,5 +805,7 @@ def main():
                    strip_raw=args.strip_raw or False,
                    disable_slugs=args.disable_slugs or False,
                    filter_author=args.author,
+                   wp_custpost = args.wp_custpost or False,
                    wp_attach = args.wp_attach or False,
-                   wp_custpost = args.wp_custpost or False)
+                   attachments = attachments or None,
+                   download_folder = download_folder or None)
