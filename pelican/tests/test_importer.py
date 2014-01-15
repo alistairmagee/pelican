@@ -4,7 +4,7 @@ from __future__ import unicode_literals, print_function
 import os
 import re
 
-from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header, build_markdown_header, get_attachments, create_gallery
+from pelican.tools.pelican_import import wp2fields, fields2pelican, decode_wp_content, build_header, build_markdown_header, get_attachments, download_attachments
 from pelican.tests.support import (unittest, temporary_folder, mute,
                                    skipIfNoExecutable)
 
@@ -23,6 +23,7 @@ try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = False  # NOQA
+
 
 @skipIfNoExecutable(['pandoc', '--version'])
 @unittest.skipUnless(BeautifulSoup, 'Needs BeautifulSoup module')
@@ -245,15 +246,17 @@ class TestBuildHeader(unittest.TestCase):
                 'これは広い幅の文字だけで構成されたタイトルです\n' +
                 '##############################################\n\n')
 
-    def test_gallery_added_to_header(self):
+    def test_galleries_added_to_header(self):
         header = build_header('test', None, None, None, None, 
-                None, 'output/test')
-        self.assertEqual(header, 'test\n####\n' + ':gallery: output/test\n\n')
+                None, ['output/test1', 'output/test2'])
+        self.assertEqual(header, 'test\n####\n' + ':attachments: output/test1, ' 
+                + 'output/test2\n\n')
 
-    def test_gallery_added_to_markdown_header(self):
+    def test_galleries_added_to_markdown_header(self):
         header = build_markdown_header('test', None, None, None, None, None,
-            'output/test')
-        self.assertEqual(header, 'Title: test\n' + 'Gallery: output/test\n\n')
+            ['output/test1', 'output/test2'])
+        self.assertEqual(header, 'Title: test\n' + 'Attachments: output/test1, '
+                + 'output/test2\n\n')
 
         
 class TestWordpressXMLAttachements(unittest.TestCase):        
@@ -277,15 +280,14 @@ class TestWordpressXMLAttachements(unittest.TestCase):
             else:
                 self.fail('all attachments should match to a filename or None, {}'.format(post))
 
-
-#    def test_gallery_created_and_valid_attachments_download(self):
-#        self.assertTrue(self.attachments)
-#        urls = self.attachments['with-excerpt']
-#        valid_file = 'Pelikan_Walvis_Bay.jpg'
-#        invalid_file = 'not_an_image.jpg'
-#        with temporary_folder() as temp:
-#            gallery = create_gallery(temp, 'with-tags', urls)
-#            self.assertTrue(os.path.isdir(gallery))
-#            self.assertTrue(os.path.isfile(os.path.join(gallery, valid_file)))
-#            self.assertFalse(os.path.isfile(os.path.join(gallery, invalid_file)))
-#
+    def test_download_attachments(self):
+        real_file = os.path.join(CUR_DIR, 'content/article.rst')
+        good_url = 'file://' + real_file
+        bad_url = 'http://www.notarealsite.notarealdomain/not_a_file.txt'
+        silent_da = mute()(download_attachments)
+        with temporary_folder() as temp:
+            #locations = download_attachments(temp, [good_url, bad_url])
+            locations = list(silent_da(temp, [good_url, bad_url]))
+            self.assertTrue(len(locations) == 1)
+            directory = locations[0]
+            self.assertTrue(directory.endswith('content/article.rst'))

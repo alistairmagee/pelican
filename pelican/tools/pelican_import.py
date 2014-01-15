@@ -6,9 +6,15 @@ import argparse
 try:
     # py3k import
     from html.parser import HTMLParser
+    from urllib.request import urlretrieve
+    from urllib.parse import urlparse
+    from urllib.error import URLError
 except ImportError:
     # py2 import
     from HTMLParser import HTMLParser  # NOQA
+    from urllib import urlretrieve
+    from urlparse import urlparse
+    from urllib2 import URLError
 import os
 import re
 import subprocess
@@ -443,7 +449,7 @@ def feed2fields(file):
         yield (entry.title, entry.description, slug, date, author, [], tags,
                kind, "html")
 
-def build_header(title, date, author, categories, tags, slug, gallery=None):
+def build_header(title, date, author, categories, tags, slug, attachments=None):
     from docutils.utils import column_width
 
     """Build a header from a list of fields"""
@@ -458,12 +464,13 @@ def build_header(title, date, author, categories, tags, slug, gallery=None):
         header += ':tags: %s\n' % ', '.join(tags)
     if slug:
         header += ':slug: %s\n' % slug
-    if gallery:
-        header += ':gallery: %s\n' % gallery
+    if attachments:
+        header += ':attachments: %s\n' % ', '.join(attachments)
     header += '\n'
     return header
 
-def build_markdown_header(title, date, author, categories, tags, slug, gallery=None):
+def build_markdown_header(title, date, author, categories, tags, slug, 
+        attachments=None):
     """Build a header from a list of fields"""
     header = 'Title: %s\n' % title
     if date:
@@ -476,8 +483,8 @@ def build_markdown_header(title, date, author, categories, tags, slug, gallery=N
         header += 'Tags: %s\n' % ', '.join(tags)
     if slug:
         header += 'Slug: %s\n' % slug
-    if gallery:
-        header += 'Gallery: %s\n' % gallery
+    if attachments:
+        header += 'Attachments: %s\n' % ', '.join(attachments)
     header += '\n'
     return header
 
@@ -536,25 +543,6 @@ def get_out_filename(output_path, filename, ext, kind,
 
     return out_filename
 
-def test_wp_attach(wp_attach, input_type, output_path, download_folder):
-    if wp_attach and input_type != 'wordpress':
-        error = "You must be importing a wordpress xml to use the --wp-attach option"
-        exit(error)
-    elif wp_attach:
-        try:
-            import wget
-        except ImportError:
-            error = ('Missing dependency "python-wget" required to '
-                    'download wordpress attachments')
-            exit(error)
-        try:
-            download_folder = os.mkdir(os.path.join(
-                output_path, download_folder))
-            return download_folder
-        except OSError:
-            error = "Couldn't created download folder for wp attachments"
-            exit(error)
-
 def get_attachments(xml):
     """returns a dictionary of posts that have attachments with a list 
     of the attachment_urls
@@ -589,33 +577,42 @@ def get_attachments(xml):
             attachedposts[parent_name].append(url)
     return attachedposts
 
-def create_gallery(download_folder, filename, urls):
-    original_directory = os.path.abspath(os.curdir)
-    gallery = os.path.join(download_folder, filename)
-    print("creating {}".format(gallery))
-    os.mkdir(gallery)
-    os.chdir(gallery)
-    valid_downloads = 0
+def download_attachments(output_path, urls):
+    """Downloads wordpress attachments and returns a list of paths to 
+    attachments that can be associated with a post (relative path to output 
+    directory). Files that fail to download, will not be added to posts"""
+    locations = []
     for url in urls:
+        path = urlparse(url).path
+        #teardown path and rebuild to negate any errors with 
+        #os.path.join and leading /'s
+        path = path.split('/')
+        filename = path.pop(-1)
+        localpath = ''
+        for item in path:
+            localpath = os.path.join(localpath, item)
+        full_path = os.path.join(output_path, localpath)
+        if not os.path.exists(full_path):
+            os.makedirs(full_path)
+        print('downloading {}'.format(filename))
         try:
-            wget.download(url)
-            valid_downloads += 1
-        except URLError:
-            error = "Couldn't download file at {}, skipping".format(url)
-    os.chdir(original_directory)
-    
-    if valid_downloads > 0:
-        return gallery
-    else:
-        "No files could be downloaded, deleting gallery"
-        return None
+            urlretrieve(url, os.path.join(full_path, filename))
+            locations.append(os.path.join(localpath, filename))
+        except URLError as e:
+            error = ("No file could be downloaded from {}; Error {}"
+                    .format(url, e))
+            logger.warn(error)
+        except IOError as e: #Python 2.7 throws an IOError rather Than URLError
+            error = ("No file could be downloaded from {}; Error {}"
+                    .format(url, e))
+            logger.warn(error)
+    return locations
 
 
 def fields2pelican(fields, out_markup, output_path,
         dircat=False, strip_raw=False, disable_slugs=False,
         dirpage=False, filename_template=None, filter_author=None,
-        wp_custpost=False, wp_attach=False, attachments=None, 
-        download_folder=None):
+        wp_custpost=False, wp_attach=False, attachments=None):
     for (title, content, filename, date, author, categories, tags,
             kind, in_markup) in fields:
         if filter_author and filter_author != author:
@@ -625,20 +622,20 @@ def fields2pelican(fields, out_markup, output_path,
         if wp_attach and attachments:
             try:
                 urls = attachments[filename]
-                gallery = create_gallery(download_folder, filename, urls)
+                attached_files = create_galleries(output_path, urls)
             except KeyError:
-                gallery = None
+                attached_files = None
         else: 
-            gallery = None
+            attached_files = None
 
         ext = get_ext(out_markup, in_markup)
         if ext == '.md':
             header = build_markdown_header(title, date, author, categories, 
-                    tags, slug, gallery)
+                    tags, slug, attached_files)
         else:
             out_markup = "rst"
             header = build_header(title, date, author, categories, 
-                    tags, slug, gallery)
+                    tags, slug, attached_files)
 
         out_filename = get_out_filename(output_path, filename, ext,
                 kind, dirpage, dircat, categories, wp_custpost)
@@ -690,9 +687,9 @@ def fields2pelican(fields, out_markup, output_path,
         with open(out_filename, 'w', encoding='utf-8') as fs:
             fs.write(header + content)
     if wp_attach and attachments and None in attachments:
-        print("downloading attachments that don't have a post")
+        print("downloading attachments that don't have a parent post")
         urls = attachments[None]
-        orphan_gallery = create_gallery(download_path, '_orphan_files', urls)
+        orphan_galleries = create_galleries(output_path, urls)
             
 def main():
     parser = argparse.ArgumentParser(
@@ -733,14 +730,12 @@ def main():
              '/post_type/category/ (wordpress import only)')
     parser.add_argument('--wp-attach', action='store_true', dest='wp_attach',
         help='(wordpress import only) Download files uploaded to wordpress as '
-             'attachments into a gallery located at '
-             'output_path/_wp_uploads/postname . also generates a text file '
-             'redirects.txt in the _wp_uploads directory with the orignal url '
-             'and the new location. '
-             'Requires an internet connection, the pelican-gallery plugin ' 
-             'and python-wget ("pip install wget")')
-    parser.add_argument('--wp-attach-dest', dest='download_folder', 
-            default='_attachments', help='Folder to download attachments to')
+             'attachments. Files will be added to posts as a list in the post '
+             'header. All files will be downloaded, even if '
+             "they aren't associated with a post. Files with be downloaded "
+             'with their original path inside the output directory. '
+             'e.g. output/wp-uploads/date/postname/file.jpg '
+             '-- Requires an internet connection --')
     parser.add_argument('--disable-slugs', action='store_true',
         dest='disable_slugs',
         help='Disable storing slugs from imported posts within output. '
@@ -776,10 +771,10 @@ def main():
         except OSError:
             error = "Unable to create the output folder: " + args.output
             exit(error)
-    
-    #test wp-attach before starting to process xml
-    download_folder = test_wp_attach(args.wp_attach, input_type, 
-            args.download_folder)
+
+    if wp_attach and input_type != 'wordpress':
+        error = "You must be importing a wordpress xml to use the --wp-attach option"
+        exit(error)
           
     if input_type == 'wordpress':
         fields = wp2fields(args.input, args.wp_custpost or False)
@@ -793,7 +788,7 @@ def main():
         fields = feed2fields(args.input)
 
     if args.wp_attach:
-        attachments = get_attachments()
+        attachments = get_attachments(args.input)
 
 
     init() # init logging
@@ -806,5 +801,4 @@ def main():
                    filter_author=args.author,
                    wp_custpost = args.wp_custpost or False,
                    wp_attach = args.wp_attach or False,
-                   attachments = attachments or None,
-                   download_folder = download_folder or None)
+                   attachments = attachments or None)
