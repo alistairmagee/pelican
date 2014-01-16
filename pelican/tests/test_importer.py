@@ -258,7 +258,7 @@ class TestBuildHeader(unittest.TestCase):
         self.assertEqual(header, 'Title: test\n' + 'Attachments: output/test1, '
                 + 'output/test2\n\n')
 
-        
+@unittest.skipUnless(BeautifulSoup, 'Needs BeautifulSoup module')       
 class TestWordpressXMLAttachements(unittest.TestCase):        
     def setUp(self):
         self.attachments = get_attachments(WORDPRESS_XML_SAMPLE)
