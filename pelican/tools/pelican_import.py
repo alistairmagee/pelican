@@ -622,7 +622,7 @@ def fields2pelican(fields, out_markup, output_path,
         if wp_attach and attachments:
             try:
                 urls = attachments[filename]
-                attached_files = create_galleries(output_path, urls)
+                attached_files = download_attachments(output_path, urls)
             except KeyError:
                 attached_files = None
         else: 
@@ -689,7 +689,7 @@ def fields2pelican(fields, out_markup, output_path,
     if wp_attach and attachments and None in attachments:
         print("downloading attachments that don't have a parent post")
         urls = attachments[None]
-        orphan_galleries = create_galleries(output_path, urls)
+        orphan_galleries = download_attachments(output_path, urls)
             
 def main():
     parser = argparse.ArgumentParser(
@@ -772,7 +772,7 @@ def main():
             error = "Unable to create the output folder: " + args.output
             exit(error)
 
-    if wp_attach and input_type != 'wordpress':
+    if args.wp_attach and input_type != 'wordpress':
         error = "You must be importing a wordpress xml to use the --wp-attach option"
         exit(error)
           
@@ -789,7 +789,8 @@ def main():
 
     if args.wp_attach:
         attachments = get_attachments(args.input)
-
+    else:
+        attachments = None
 
     init() # init logging
 
