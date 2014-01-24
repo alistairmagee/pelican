@@ -6,7 +6,6 @@ from datetime import datetime
 from sys import platform
 
 from pelican.tests.support import unittest, get_settings
-
 from pelican.contents import Page, Article, URLWrapper
 from pelican.settings import DEFAULT_CONFIG
 from pelican.utils import truncate_html_words
